@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quadro Kanban</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --col: #e9ebef;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #656d76;
+    --accent: #2f6feb;
+    --border: #d0d7de;
+    --danger: #cf222e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --col: #161b22;
+      --card: #21262d;
+      --text: #e6edf3;
+      --muted: #8d96a0;
+      --accent: #4c8dff;
+      --border: #30363d;
+      --danger: #f85149;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+  }
+  h1 { margin: 0; font-size: 1.4rem; }
+  .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  button:hover { border-color: var(--accent); }
+  .quadro {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 0 16px 24px;
+    align-items: start;
+  }
+  .coluna {
+    background: var(--col);
+    border-radius: 10px;
+    padding: 12px;
+    min-height: 160px;
+  }
+  .coluna.sobre { outline: 2px dashed var(--accent); }
+  .coluna h2 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    display: flex;
+    justify-content: space-between;
+  }
+  .contador { color: var(--muted); font-weight: normal; }
+  .cartao {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    cursor: grab;
+    word-break: break-word;
+  }
+  .cartao.arrastando { opacity: 0.4; }
+  .cartao .texto { white-space: pre-wrap; outline: none; }
+  .cartao .texto:focus { box-shadow: 0 0 0 2px var(--accent); border-radius: 4px; }
+  .cartao .botoes {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .cartao .botoes button { padding: 2px 8px; font-size: 0.85rem; }
+  .cartao .botoes .excluir { color: var(--danger); }
+  form.novo { display: flex; gap: 6px; margin-top: 8px; }
+  form.novo input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+  }
+  footer { padding: 0 16px 24px; color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Quadro Kanban</h1>
+  <div class="acoes">
+    <button id="exportar" title="Baixar um backup do quadro">Exportar</button>
+    <button id="importar" title="Carregar um backup">Importar</button>
+    <input type="file" id="arquivo" accept="application/json" hidden>
+  </div>
+</header>
+
+<main class="quadro" id="quadro"></main>
+
+<footer>
+  Arraste os cartões entre as colunas (ou use ← →). Clique no texto para editar.
+  Os dados ficam salvos neste navegador; use "Exportar" para fazer backup.
+</footer>
+
+<script>
+  const CHAVE = "kanban-dados";
+  const COLUNAS = [
+    { id: "afazer", nome: "A fazer" },
+    { id: "fazendo", nome: "Fazendo" },
+    { id: "feito", nome: "Feito" },
+  ];
+
+  function carregar() {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE));
+      if (Array.isArray(salvo)) return salvo;
+    } catch (e) {}
+    return [
+      { id: novoId(), coluna: "afazer", texto: "Meu primeiro cartão" },
+    ];
+  }
+
+  function salvar() {
+    try { localStorage.setItem(CHAVE, JSON.stringify(cartoes)); } catch (e) {}
+  }
+
+  function novoId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  let cartoes = carregar();
+  const quadro = document.getElementById("quadro");
+
+  function mover(id, colunaId, antesDeId) {
+    const i = cartoes.findIndex(c => c.id === id);
+    if (i < 0) return;
+    const [cartao] = cartoes.splice(i, 1);
+    cartao.coluna = colunaId;
+    const j = antesDeId ? cartoes.findIndex(c => c.id === antesDeId) : -1;
+    if (j >= 0) cartoes.splice(j, 0, cartao);
+    else cartoes.push(cartao);
+    salvar();
+    desenhar();
+  }
+
+  function desenhar() {
+    quadro.innerHTML = "";
+    COLUNAS.forEach((col, indice) => {
+      const doCol = cartoes.filter(c => c.coluna === col.id);
+      const el = document.createElement("section");
+      el.className = "coluna";
+      el.dataset.coluna = col.id;
+      el.innerHTML = `<h2>${col.nome} <span class="contador">${doCol.length}</span></h2>`;
+
+      doCol.forEach(c => {
+        const card = document.createElement("div");
+        card.className = "cartao";
+        card.draggable = true;
+        card.dataset.id = c.id;
+
+        const texto = document.createElement("div");
+        texto.className = "texto";
+        texto.contentEditable = "true";
+        texto.textContent = c.texto;
+        texto.addEventListener("blur", () => {
+          const novo = texto.textContent.trim();
+          if (novo && novo !== c.texto) { c.texto = novo; salvar(); }
+          else texto.textContent = c.texto;
+        });
+
+        const botoes = document.createElement("div");
+        botoes.className = "botoes";
+        if (indice > 0) botoes.append(botao("←", "Mover para a esquerda", () => mover(c.id, COLUNAS[indice - 1].id)));
+        if (indice < COLUNAS.length - 1) botoes.append(botao("→", "Mover para a direita", () => mover(c.id, COLUNAS[indice + 1].id)));
+        const excluir = botao("✕", "Excluir", () => {
+          if (confirm("Excluir este cartão?")) {
+            cartoes = cartoes.filter(x => x.id !== c.id);
+            salvar();
+            desenhar();
+          }
+        });
+        excluir.classList.add("excluir");
+        botoes.append(excluir);
+
+        card.append(texto, botoes);
+        card.addEventListener("dragstart", e => {
+          e.dataTransfer.setData("text/plain", c.id);
+          card.classList.add("arrastando");
+        });
+        card.addEventListener("dragend", () => card.classList.remove("arrastando"));
+        el.append(card);
+      });
+
+      const form = document.createElement("form");
+      form.className = "novo";
+      form.innerHTML = `<input placeholder="Novo cartão…" aria-label="Novo cartão em ${col.nome}"><button type="submit">+</button>`;
+      form.addEventListener("submit", e => {
+        e.preventDefault();
+        const input = form.querySelector("input");
+        const valor = input.value.trim();
+        if (!valor) return;
+        cartoes.push({ id: novoId(), coluna: col.id, texto: valor });
+        salvar();
+        desenhar();
+        quadro.querySelector(`[data-coluna="${col.id}"] input`).focus();
+      });
+      el.append(form);
+
+      el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("sobre"); });
+      el.addEventListener("dragleave", () => el.classList.remove("sobre"));
+      el.addEventListener("drop", e => {
+        e.preventDefault();
+        el.classList.remove("sobre");
+        const id = e.dataTransfer.getData("text/plain");
+        const alvo = e.target.closest(".cartao");
+        mover(id, col.id, alvo && alvo.dataset.id !== id ? alvo.dataset.id : null);
+      });
+
+      quadro.append(el);
+    });
+  }
+
+  function botao(rotulo, titulo, acao) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = rotulo;
+    b.title = titulo;
+    b.addEventListener("click", acao);
+    return b;
+  }
+
+  document.getElementById("exportar").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(cartoes, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "kanban-backup.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  const arquivo = document.getElementById("arquivo");
+  document.getElementById("importar").addEventListener("click", () => arquivo.click());
+  arquivo.addEventListener("change", async () => {
+    const f = arquivo.files[0];
+    if (!f) return;
+    try {
+      const dados = JSON.parse(await f.text());
+      if (!Array.isArray(dados)) throw new Error();
+      cartoes = dados;
+      salvar();
+      desenhar();
+    } catch (e) {
+      alert("Arquivo inválido.");
+    }
+    arquivo.value = "";
+  });
+
+  desenhar();
+</script>
+</body>
+</html>
