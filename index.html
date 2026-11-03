@@ -128,6 +128,10 @@
   .tabela > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tabela .nome { flex: 1; min-width: 140px; }
   .links a { color: var(--accent); }
+  .etiqueta.livre { background: var(--col); color: var(--text); border: 1px solid var(--border); }
+  .comentarios { display: grid; gap: 8px; margin-bottom: 8px; }
+  .texto-comentario { white-space: pre-wrap; }
+  .meta button { padding: 0 6px; font-size: 0.75rem; }
 </style>
 </head>
 <body>
@@ -135,9 +139,9 @@
 <section class="tela-login" id="telaLogin" hidden>
   <h1>Quadro Kanban</h1>
   <form id="formLogin">
-    <p class="aviso">Digite seu e-mail para receber um link de acesso. Não precisa de senha.</p>
-    <input type="email" id="emailLogin" required placeholder="seu@email.com" autocomplete="email">
-    <button class="primario" type="submit">Enviar link</button>
+    <p class="aviso">Digite a senha da equipe.</p>
+    <input type="password" id="senhaLogin" required placeholder="Senha" autocomplete="current-password">
+    <button class="primario" type="submit">Entrar</button>
     <p class="aviso" id="msgLogin"></p>
   </form>
 </section>
@@ -152,15 +156,18 @@
   <header>
     <h1>Quadro Kanban</h1>
     <div class="acoes">
+      <label class="check">Você: <select id="meuNome"></select></label>
       <span class="eu" id="eu"></span>
       <button id="abrirAdmin" hidden>Administração</button>
       <button data-sair>Sair</button>
     </div>
   </header>
   <div class="filtros">
+    <input type="search" id="busca" placeholder="Buscar…" aria-label="Buscar">
     <select id="filtroTipo" aria-label="Filtrar por tipo"></select>
     <select id="filtroCampanha" aria-label="Filtrar por campanha"></select>
     <select id="filtroPessoa" aria-label="Filtrar por responsável"></select>
+    <label class="check"><input type="checkbox" id="meus"> Meus cartões</label>
     <label class="check"><input type="checkbox" id="verArquivados"> Arquivados</label>
   </div>
   <main class="quadro" id="quadro"></main>
@@ -187,6 +194,9 @@
       <label>Briefing (objetivo, público, mensagem, rede)
         <textarea id="cBriefing" rows="4"></textarea>
       </label>
+      <label>Etiquetas, separadas por vírgula (ex.: urgente, Instagram)
+        <input id="cEtiquetas">
+      </label>
       <label>Links — um por linha, ex.: <i>Drive | https://…</i>
         <textarea id="cLinks" rows="3"></textarea>
       </label>
@@ -195,8 +205,15 @@
       <div class="lista-check" id="cChecklist"></div>
       <div><button type="button" id="cAddEtapa">+ Etapa</button></div>
     </div>
+    <h4>Comentários</h4>
+    <div class="comentarios" id="cComentarios"></div>
+    <div class="acoes">
+      <textarea id="cNovoComentario" rows="2" placeholder="Escreva um comentário…" style="flex:1"></textarea>
+      <button type="button" id="cComentar">Enviar</button>
+    </div>
     <div class="rodape">
       <div class="acoes">
+        <button type="button" id="cDuplicar">Duplicar</button>
         <button type="button" class="perigo" id="cExcluir" hidden>Excluir</button>
         <button type="button" id="cArquivar" hidden>Arquivar</button>
       </div>
@@ -211,12 +228,10 @@
 <dialog id="dlgAdmin">
   <h3>Administração</h3>
 
-  <h4>Membros</h4>
-  <div class="tabela" id="aMembros"></div>
-  <form class="acoes" id="aFormMembro" style="margin-top:8px">
-    <input type="email" id="aEmail" required placeholder="email@exemplo.com">
-    <input id="aNome" placeholder="Nome">
-    <select id="aPapel"><option value="membro">Membro</option><option value="admin">Admin</option></select>
+  <h4>Pessoas da equipe</h4>
+  <div class="tabela" id="aPessoas"></div>
+  <form class="acoes" id="aFormPessoa" style="margin-top:8px">
+    <input id="aNome" required placeholder="Nome">
     <button type="submit">Adicionar</button>
   </form>
 
@@ -260,11 +275,24 @@
 
   const $ = id => document.getElementById(id);
   let eu = null, admin = false;
-  let membros = [], tipos = [], campanhas = [], cartoes = [];
+  let pessoas = [], tipos = [], campanhas = [], cartoes = [];
   let editando = null, checklistEdit = [];
   let canal = null, recarga = null;
 
+  // Com login compartilhado, cada pessoa diz quem é; fica lembrado neste aparelho.
+  let meuNome = "";
+  try { meuNome = localStorage.getItem("kanban-nome") || ""; } catch (e) {}
+  $("meuNome").addEventListener("change", () => {
+    meuNome = $("meuNome").value;
+    try { localStorage.setItem("kanban-nome", meuNome); } catch (e) {}
+    desenhar();
+  });
+
   // ---------- Login ----------
+
+  // Duas contas fixas no Supabase: a senha digitada é testada na da equipe e, se não servir, na do admin.
+  const CONTA_EQUIPE = "equipe@example.com";
+  const CONTA_ADMIN = "admin@example.com";
 
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (["INITIAL_SESSION", "SIGNED_IN", "SIGNED_OUT"].includes(evento)) {
@@ -275,14 +303,12 @@
   $("formLogin").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = $("msgLogin");
-    msg.textContent = "Enviando…";
-    const { error } = await sb.auth.signInWithOtp({
-      email: $("emailLogin").value.trim().toLowerCase(),
-      options: { emailRedirectTo: location.origin + location.pathname },
-    });
-    msg.textContent = error
-      ? "Não foi possível enviar: " + error.message
-      : "Pronto! Abra o link que chegou no seu e-mail.";
+    const password = $("senhaLogin").value;
+    msg.textContent = "Entrando…";
+    let { error } = await sb.auth.signInWithPassword({ email: CONTA_EQUIPE, password });
+    if (error) ({ error } = await sb.auth.signInWithPassword({ email: CONTA_ADMIN, password }));
+    msg.textContent = error ? "Senha incorreta." : "";
+    if (!error) $("senhaLogin").value = "";
   });
 
   document.querySelectorAll("[data-sair]").forEach(b =>
@@ -305,7 +331,7 @@
       return mostrar("telaSemAcesso");
     }
     admin = data.papel === "admin";
-    $("eu").textContent = (data.nome || eu) + (admin ? " · admin" : "");
+    $("eu").textContent = admin ? "Modo admin" : "";
     $("abrirAdmin").hidden = !admin;
     mostrar("app");
     await carregarTudo();
@@ -323,11 +349,11 @@
 
   async function carregarTudo() {
     const [m, t, c] = await Promise.all([
-      sb.from("membros").select("*").order("nome"),
+      sb.from("pessoas").select("*").order("nome"),
       sb.from("tipos").select("*").order("nome"),
       sb.from("campanhas").select("*").order("criado_em"),
     ]);
-    membros = m.data || [];
+    pessoas = m.data || [];
     tipos = t.data || [];
     campanhas = c.data || [];
     montarFiltros();
@@ -355,8 +381,7 @@
 
   const tipoDe = id => tipos.find(t => t.id === id);
   const campanhaDe = id => campanhas.find(c => c.id === id);
-  const nomeDe = email => (membros.find(m => m.email === email) || {}).nome || email;
-  const iniciais = email => nomeDe(email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
+  const iniciais = nome => nome.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
   const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const dataBR = d => d.split("-").reverse().slice(0, 2).join("/");
 
@@ -371,19 +396,25 @@
   function montarFiltros() {
     opcoes($("filtroTipo"), tipos.map(t => [t.id, t.nome]), "Todos os tipos");
     opcoes($("filtroCampanha"), campanhas.filter(c => !c.arquivada).map(c => [c.id, c.nome]), "Todas as campanhas");
-    opcoes($("filtroPessoa"), membros.map(m => [m.email, m.nome || m.email]), "Todas as pessoas");
+    opcoes($("filtroPessoa"), pessoas.map(p => [p.nome, p.nome]), "Todas as pessoas");
+    opcoes($("meuNome"), pessoas.map(p => [p.nome, p.nome]), "Escolha…");
+    $("meuNome").value = pessoas.some(p => p.nome === meuNome) ? meuNome : "";
   }
-  ["filtroTipo", "filtroCampanha", "filtroPessoa", "verArquivados"].forEach(id =>
+  ["filtroTipo", "filtroCampanha", "filtroPessoa", "verArquivados", "meus"].forEach(id =>
     $(id).addEventListener("change", desenhar));
+  $("busca").addEventListener("input", desenhar);
 
   function visiveis() {
     const tipo = $("filtroTipo").value, camp = $("filtroCampanha").value, pessoa = $("filtroPessoa").value;
-    const arq = $("verArquivados").checked;
+    const arq = $("verArquivados").checked, meus = $("meus").checked;
+    const busca = $("busca").value.trim().toLowerCase();
     return cartoes.filter(c =>
       c.arquivado === arq &&
       (!tipo || c.tipo_id === tipo) &&
       (!camp || c.campanha_id === camp) &&
-      (!pessoa || c.responsaveis.includes(pessoa)));
+      (!pessoa || c.responsaveis.includes(pessoa)) &&
+      (!meus || c.responsaveis.includes(meuNome)) &&
+      (!busca || [c.titulo, c.briefing, ...(c.etiquetas || [])].join(" ").toLowerCase().includes(busca)));
   }
 
   function desenhar() {
@@ -448,6 +479,7 @@
     meta.className = "meta";
     if (tipo) meta.append(etiqueta(tipo.nome, tipo.cor));
     if (camp) meta.append(etiqueta(camp.nome, camp.cor));
+    (c.etiquetas || []).forEach(t => { const s = etiqueta(t); s.classList.add("livre"); meta.append(s); });
     if (c.prazo) {
       const s = document.createElement("span");
       s.textContent = "⏰ " + dataBR(c.prazo);
@@ -458,11 +490,11 @@
     if (c.checklist.length) {
       meta.append(texto("✔ " + c.checklist.filter(i => i.feito).length + "/" + c.checklist.length));
     }
-    c.responsaveis.forEach(email => {
+    c.responsaveis.forEach(nome => {
       const p = document.createElement("span");
       p.className = "pessoa";
-      p.title = nomeDe(email);
-      p.textContent = iniciais(email);
+      p.title = nome;
+      p.textContent = iniciais(nome);
       meta.append(p);
     });
 
@@ -484,7 +516,7 @@
   function etiqueta(t, cor) {
     const s = texto(t);
     s.className = "etiqueta";
-    s.style.setProperty("--cor", cor);
+    if (cor) s.style.setProperty("--cor", cor);
     return s;
   }
   function texto(t) { const s = document.createElement("span"); s.textContent = t; return s; }
@@ -530,21 +562,25 @@
     $("cPrazo").value = c.prazo || "";
     $("cPublicacao").value = c.data_publicacao || "";
     $("cBriefing").value = c.briefing;
+    $("cEtiquetas").value = (c.etiquetas || []).join(", ");
     $("cLinks").value = c.links.map(l => (l.rotulo && l.rotulo !== l.url ? l.rotulo + " | " : "") + l.url).join("\n");
     mostrarLinks(c.links);
 
-    const pessoas = $("cPessoas");
-    pessoas.innerHTML = "";
-    membros.forEach(m => {
+    $("cPessoas").innerHTML = "";
+    const nomes = [...new Set([...pessoas.map(p => p.nome), ...c.responsaveis])];
+    nomes.forEach(nome => {
       const l = document.createElement("label");
       l.className = "check";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.value = m.email;
-      cb.checked = c.responsaveis.includes(m.email);
-      l.append(cb, m.nome || m.email);
-      pessoas.append(l);
+      cb.value = nome;
+      cb.checked = c.responsaveis.includes(nome);
+      l.append(cb, nome);
+      $("cPessoas").append(l);
     });
+    if (!nomes.length) $("cPessoas").append(texto("O admin cadastra as pessoas em Administração."));
+    $("cNovoComentario").value = "";
+    carregarComentarios();
 
     checklistEdit = c.checklist.map(i => ({ ...i }));
     desenharChecklist();
@@ -614,12 +650,64 @@
       data_publicacao: $("cPublicacao").value || null,
       responsaveis: [...$("cPessoas").querySelectorAll("input:checked")].map(cb => cb.value),
       briefing: $("cBriefing").value,
+      etiquetas: separar($("cEtiquetas").value),
       links: lerLinks(),
       checklist: checklistEdit.filter(i => i.item.trim()),
     };
     if (await gravar(sb.from("cartoes").update(dados).eq("id", editando.id))) {
       $("dlgCartao").close();
       await carregarCartoes();
+    }
+  });
+
+  $("cDuplicar").addEventListener("click", async () => {
+    const { id, criado_em, atualizado_em, criado_por, ...resto } = editando;
+    const copia = {
+      ...resto,
+      titulo: editando.titulo + " (cópia)",
+      ordem: editando.ordem + 0.001,
+      arquivado: false,
+      checklist: editando.checklist.map(i => ({ ...i, feito: false })),
+    };
+    if (await gravar(sb.from("cartoes").insert(copia))) {
+      $("dlgCartao").close();
+      await carregarCartoes();
+    }
+  });
+
+  // ---------- Comentários ----------
+
+  async function carregarComentarios() {
+    const el = $("cComentarios");
+    el.textContent = "Carregando…";
+    const { data, error } = await sb.from("comentarios").select("*").eq("cartao_id", editando.id).order("criado_em");
+    el.innerHTML = "";
+    if (error) return el.append(texto("Erro: " + error.message));
+    if (!data.length) el.append(texto("Nenhum comentário ainda."));
+    data.forEach(c => {
+      const cab = document.createElement("div");
+      cab.className = "meta";
+      const quando = new Date(c.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+      cab.append(texto((c.autor || "Alguém") + " · " + quando));
+      if (admin) cab.append(botao("✕", async () => {
+        if (confirm("Apagar este comentário?") && await gravar(sb.from("comentarios").delete().eq("id", c.id)))
+          carregarComentarios();
+      }));
+      const t = texto(c.texto);
+      t.className = "texto-comentario";
+      const d = document.createElement("div");
+      d.append(cab, t);
+      el.append(d);
+    });
+  }
+
+  $("cComentar").addEventListener("click", async () => {
+    const txt = $("cNovoComentario").value.trim();
+    if (!txt) return;
+    if (!meuNome) return alert("Escolha seu nome em \"Você\", no topo da página.");
+    if (await gravar(sb.from("comentarios").insert({ cartao_id: editando.id, autor: meuNome, texto: txt }))) {
+      $("cNovoComentario").value = "";
+      carregarComentarios();
     }
   });
 
@@ -658,22 +746,15 @@
   }
 
   function desenharAdmin() {
-    const am = $("aMembros");
-    am.innerHTML = "";
-    membros.forEach(m => {
-      const papel = document.createElement("select");
-      papel.append(new Option("Membro", "membro"), new Option("Admin", "admin"));
-      papel.value = m.papel;
-      papel.disabled = m.email === eu;
-      papel.addEventListener("change", () =>
-        adminGravar(sb.from("membros").update({ papel: papel.value }).eq("email", m.email)));
+    const ap = $("aPessoas");
+    ap.innerHTML = "";
+    pessoas.forEach(p => {
       const remover = botao("Remover", () => {
-        if (confirm("Remover " + (m.nome || m.email) + " da equipe?"))
-          adminGravar(sb.from("membros").delete().eq("email", m.email));
+        if (confirm("Remover " + p.nome + " da equipe?"))
+          adminGravar(sb.from("pessoas").delete().eq("nome", p.nome));
       });
       remover.className = "perigo";
-      remover.disabled = m.email === eu;
-      am.append(linhaAdmin((m.nome ? m.nome + " — " : "") + m.email, papel, remover));
+      ap.append(linhaAdmin(p.nome, remover));
     });
 
     const ac = $("aCampanhas");
@@ -709,13 +790,9 @@
 
   const separar = s => s.split(",").map(x => x.trim()).filter(Boolean);
 
-  $("aFormMembro").addEventListener("submit", e => {
+  $("aFormPessoa").addEventListener("submit", e => {
     e.preventDefault();
-    adminGravar(sb.from("membros").insert({
-      email: $("aEmail").value.trim().toLowerCase(),
-      nome: $("aNome").value.trim() || null,
-      papel: $("aPapel").value,
-    }));
+    adminGravar(sb.from("pessoas").insert({ nome: $("aNome").value.trim() }));
     e.target.reset();
   });
 
@@ -736,7 +813,7 @@
   });
 
   $("aExportar").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ membros, tipos, campanhas, cartoes }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ pessoas, tipos, campanhas, cartoes }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "kanban-backup-" + hoje() + ".json";
