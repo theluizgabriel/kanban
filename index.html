@@ -103,6 +103,7 @@
   .tela-login { max-width: 360px; margin: 12vh auto; padding: 0 16px; }
   .tela-login form { display: flex; flex-direction: column; gap: 10px; }
   .aviso { color: var(--muted); }
+  .tela-login a { color: var(--accent); }
 
   dialog {
     width: min(640px, calc(100% - 32px));
@@ -139,24 +140,38 @@
 <section class="tela-login" id="telaLogin" hidden>
   <h1>Quadro Kanban</h1>
   <form id="formLogin">
-    <p class="aviso">Digite a senha da equipe.</p>
-    <input type="password" id="senhaLogin" required placeholder="Senha" autocomplete="current-password">
-    <button class="primario" type="submit">Entrar</button>
+    <p class="aviso" id="instrucaoLogin">Entre com seu e-mail e senha.</p>
+    <input type="email" id="emailLogin" required placeholder="voce@proton.me" autocomplete="email">
+    <input id="nomeLogin" placeholder="Seu nome" autocomplete="name" hidden>
+    <input type="password" id="senhaLogin" required minlength="8" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password">
+    <button class="primario" type="submit" id="botaoLogin">Entrar</button>
     <p class="aviso" id="msgLogin"></p>
+    <p class="aviso">
+      <a href="#" data-modo="entrar">Entrar</a> ·
+      <a href="#" data-modo="criar">Criar conta</a> ·
+      <a href="#" data-modo="esqueci">Esqueci a senha</a>
+    </p>
   </form>
 </section>
 
 <section class="tela-login" id="telaSemAcesso" hidden>
-  <h1>Sem acesso</h1>
-  <p class="aviso">O e-mail <b id="emailSemAcesso"></b> ainda não foi convidado. Peça ao administrador para adicionar você.</p>
+  <h1 id="tituloSemAcesso">Sem acesso</h1>
+  <p class="aviso" id="textoSemAcesso"></p>
   <button data-sair>Sair</button>
 </section>
+
+<dialog id="dlgSenha">
+  <form id="formSenha">
+    <h3>Nova senha</h3>
+    <input type="password" id="novaSenha" required minlength="8" placeholder="Nova senha" autocomplete="new-password" style="width:100%">
+    <div class="rodape"><span></span><button class="primario" type="submit">Salvar senha</button></div>
+  </form>
+</dialog>
 
 <div id="app" hidden>
   <header>
     <h1>Quadro Kanban</h1>
     <div class="acoes">
-      <label class="check">Você: <select id="meuNome"></select></label>
       <span class="eu" id="eu"></span>
       <button id="abrirAdmin" hidden>Administração</button>
       <button data-sair>Sair</button>
@@ -228,12 +243,9 @@
 <dialog id="dlgAdmin">
   <h3>Administração</h3>
 
-  <h4>Pessoas da equipe</h4>
+  <h4>Membros</h4>
+  <p class="aviso">Cada pessoa cria a própria conta com e-mail do Proton. Aprove aqui quem pode entrar.</p>
   <div class="tabela" id="aPessoas"></div>
-  <form class="acoes" id="aFormPessoa" style="margin-top:8px">
-    <input id="aNome" required placeholder="Nome">
-    <button type="submit">Adicionar</button>
-  </form>
 
   <h4>Campanhas</h4>
   <div class="tabela" id="aCampanhas"></div>
@@ -275,40 +287,74 @@
 
   const $ = id => document.getElementById(id);
   let eu = null, admin = false;
-  let pessoas = [], tipos = [], campanhas = [], cartoes = [];
+  let membros = [], pessoas = [], tipos = [], campanhas = [], cartoes = [];
   let editando = null, checklistEdit = [];
-  let canal = null, recarga = null;
-
-  // Com login compartilhado, cada pessoa diz quem é; fica lembrado neste aparelho.
-  let meuNome = "";
-  try { meuNome = localStorage.getItem("kanban-nome") || ""; } catch (e) {}
-  $("meuNome").addEventListener("change", () => {
-    meuNome = $("meuNome").value;
-    try { localStorage.setItem("kanban-nome", meuNome); } catch (e) {}
-    desenhar();
-  });
+  let canal = null, recarga = null, meuNome = "";
 
   // ---------- Login ----------
 
-  // Duas contas fixas no Supabase: a senha digitada é testada na da equipe e, se não servir, na do admin.
-  const CONTA_EQUIPE = "equipe@example.com";
-  const CONTA_ADMIN = "admin@example.com";
+  // Cadastro próprio com e-mail do Proton; o admin aprova cada conta nova.
+  // O banco também recusa outros domínios (supabase-v3.sql).
+  const DOMINIOS = ["proton.me", "protonmail.com", "pm.me", "protonmail.ch"];
+  const DOMINIO = "do Proton (@proton.me, @protonmail.com, @pm.me ou @protonmail.ch)";
+  let modo = "entrar";
 
   sb.auth.onAuthStateChange((evento, sessao) => {
+    if (evento === "PASSWORD_RECOVERY") setTimeout(() => $("dlgSenha").showModal(), 0);
     if (["INITIAL_SESSION", "SIGNED_IN", "SIGNED_OUT"].includes(evento)) {
       setTimeout(() => entrar(sessao), 0);
     }
   });
 
+  document.querySelectorAll("[data-modo]").forEach(a => a.addEventListener("click", e => {
+    e.preventDefault();
+    modo = a.dataset.modo;
+    $("nomeLogin").hidden = modo !== "criar";
+    $("nomeLogin").required = modo === "criar";
+    $("senhaLogin").hidden = modo === "esqueci";
+    $("senhaLogin").required = modo !== "esqueci";
+    $("senhaLogin").autocomplete = modo === "criar" ? "new-password" : "current-password";
+    $("botaoLogin").textContent = { entrar: "Entrar", criar: "Criar conta", esqueci: "Enviar link" }[modo];
+    $("instrucaoLogin").textContent = {
+      entrar: "Entre com seu e-mail e senha.",
+      criar: "Crie sua conta com um e-mail " + DOMINIO + ". O administrador libera o acesso.",
+      esqueci: "Enviaremos um link para você criar uma nova senha.",
+    }[modo];
+    $("msgLogin").textContent = "";
+  }));
+
   $("formLogin").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = $("msgLogin");
+    const email = $("emailLogin").value.trim().toLowerCase();
     const password = $("senhaLogin").value;
-    msg.textContent = "Entrando…";
-    let { error } = await sb.auth.signInWithPassword({ email: CONTA_EQUIPE, password });
-    if (error) ({ error } = await sb.auth.signInWithPassword({ email: CONTA_ADMIN, password }));
-    msg.textContent = error ? "Senha incorreta." : "";
-    if (!error) $("senhaLogin").value = "";
+    if (modo === "criar" && !DOMINIOS.includes(email.split("@")[1])) {
+      msg.textContent = "Use um e-mail " + DOMINIO + ".";
+      return;
+    }
+    msg.textContent = "Aguarde…";
+    let r;
+    if (modo === "entrar") r = await sb.auth.signInWithPassword({ email, password });
+    if (modo === "criar") r = await sb.auth.signUp({ email, password, options: { data: { nome: $("nomeLogin").value.trim() } } });
+    if (modo === "esqueci") r = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    $("senhaLogin").value = "";
+    if (r.error) {
+      msg.textContent = modo === "entrar" ? "E-mail ou senha incorretos." : "Não deu certo: " + r.error.message;
+    } else if (modo === "esqueci") {
+      msg.textContent = "Pronto! Abra o link que chegou no seu e-mail.";
+    } else if (modo === "criar" && !r.data.session) {
+      msg.textContent = "Conta criada! Confirme pelo link no seu e-mail e depois entre.";
+    } else {
+      msg.textContent = "";
+    }
+  });
+
+  $("formSenha").addEventListener("submit", async e => {
+    e.preventDefault();
+    const { error } = await sb.auth.updateUser({ password: $("novaSenha").value });
+    if (error) return alert("Não deu certo: " + error.message);
+    $("dlgSenha").close();
+    alert("Senha alterada.");
   });
 
   document.querySelectorAll("[data-sair]").forEach(b =>
@@ -326,12 +372,16 @@
     }
     eu = sessao.user.email.toLowerCase();
     const { data } = await sb.from("membros").select("*").eq("email", eu).maybeSingle();
-    if (!data) {
-      $("emailSemAcesso").textContent = eu;
+    if (!data || data.papel === "pendente") {
+      $("tituloSemAcesso").textContent = data ? "Aguardando aprovação" : "Sem acesso";
+      $("textoSemAcesso").textContent = data
+        ? "Sua conta (" + eu + ") foi criada. Quando o administrador aprovar, é só recarregar a página."
+        : "O e-mail " + eu + " não tem acesso a este quadro.";
       return mostrar("telaSemAcesso");
     }
     admin = data.papel === "admin";
-    $("eu").textContent = admin ? "Modo admin" : "";
+    meuNome = data.nome || eu;
+    $("eu").textContent = meuNome + (admin ? " · admin" : "");
     $("abrirAdmin").hidden = !admin;
     mostrar("app");
     await carregarTudo();
@@ -349,11 +399,14 @@
 
   async function carregarTudo() {
     const [m, t, c] = await Promise.all([
-      sb.from("pessoas").select("*").order("nome"),
+      sb.from("membros").select("*").order("nome"),
       sb.from("tipos").select("*").order("nome"),
       sb.from("campanhas").select("*").order("criado_em"),
     ]);
-    pessoas = m.data || [];
+    membros = m.data || [];
+    pessoas = membros.filter(x => x.papel !== "pendente").map(x => ({ nome: x.nome || x.email }));
+    const pendentes = membros.filter(x => x.papel === "pendente").length;
+    $("abrirAdmin").textContent = "Administração" + (pendentes ? " (" + pendentes + " aguardando)" : "");
     tipos = t.data || [];
     campanhas = c.data || [];
     montarFiltros();
@@ -396,10 +449,7 @@
   function montarFiltros() {
     opcoes($("filtroTipo"), tipos.map(t => [t.id, t.nome]), "Todos os tipos");
     opcoes($("filtroCampanha"), campanhas.filter(c => !c.arquivada).map(c => [c.id, c.nome]), "Todas as campanhas");
-    opcoes($("filtroPessoa"), pessoas.map(p => [p.nome, p.nome]), "Todas as pessoas");
-    opcoes($("meuNome"), pessoas.map(p => [p.nome, p.nome]), "Escolha…");
-    $("meuNome").value = pessoas.some(p => p.nome === meuNome) ? meuNome : "";
-  }
+    opcoes($("filtroPessoa"), pessoas.map(p => [p.nome, p.nome]), "Todas as pessoas");  }
   ["filtroTipo", "filtroCampanha", "filtroPessoa", "verArquivados", "meus"].forEach(id =>
     $(id).addEventListener("change", desenhar));
   $("busca").addEventListener("input", desenhar);
@@ -578,7 +628,6 @@
       l.append(cb, nome);
       $("cPessoas").append(l);
     });
-    if (!nomes.length) $("cPessoas").append(texto("O admin cadastra as pessoas em Administração."));
     $("cNovoComentario").value = "";
     carregarComentarios();
 
@@ -704,7 +753,6 @@
   $("cComentar").addEventListener("click", async () => {
     const txt = $("cNovoComentario").value.trim();
     if (!txt) return;
-    if (!meuNome) return alert("Escolha seu nome em \"Você\", no topo da página.");
     if (await gravar(sb.from("comentarios").insert({ cartao_id: editando.id, autor: meuNome, texto: txt }))) {
       $("cNovoComentario").value = "";
       carregarComentarios();
@@ -748,13 +796,22 @@
   function desenharAdmin() {
     const ap = $("aPessoas");
     ap.innerHTML = "";
-    pessoas.forEach(p => {
+    const pendenteAntes = m => (m.papel === "pendente" ? 0 : 1);
+    [...membros].sort((a, b) => pendenteAntes(a) - pendenteAntes(b)).forEach(m => {
+      const papel = document.createElement("select");
+      papel.append(new Option("Aguardando", "pendente"), new Option("Membro", "membro"), new Option("Admin", "admin"));
+      papel.value = m.papel;
+      papel.disabled = m.email === eu;
+      papel.addEventListener("change", () =>
+        adminGravar(sb.from("membros").update({ papel: papel.value }).eq("email", m.email)));
       const remover = botao("Remover", () => {
-        if (confirm("Remover " + p.nome + " da equipe?"))
-          adminGravar(sb.from("pessoas").delete().eq("nome", p.nome));
+        if (confirm("Remover " + (m.nome || m.email) + "? A pessoa perde o acesso."))
+          adminGravar(sb.from("membros").delete().eq("email", m.email));
       });
       remover.className = "perigo";
-      ap.append(linhaAdmin(p.nome, remover));
+      remover.disabled = m.email === eu;
+      const rotulo = (m.nome ? m.nome + " — " : "") + m.email + (m.papel === "pendente" ? " ⏳" : "");
+      ap.append(linhaAdmin(rotulo, papel, remover));
     });
 
     const ac = $("aCampanhas");
@@ -790,12 +847,6 @@
 
   const separar = s => s.split(",").map(x => x.trim()).filter(Boolean);
 
-  $("aFormPessoa").addEventListener("submit", e => {
-    e.preventDefault();
-    adminGravar(sb.from("pessoas").insert({ nome: $("aNome").value.trim() }));
-    e.target.reset();
-  });
-
   $("aFormCampanha").addEventListener("submit", e => {
     e.preventDefault();
     adminGravar(sb.from("campanhas").insert({ nome: $("aCampNome").value.trim(), cor: $("aCampCor").value }));
@@ -813,7 +864,7 @@
   });
 
   $("aExportar").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ pessoas, tipos, campanhas, cartoes }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ membros, tipos, campanhas, cartoes }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "kanban-backup-" + hoje() + ".json";
