@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quadro Kanban</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --bg: #f4f5f7;
@@ -34,6 +35,7 @@
     color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
+  [hidden] { display: none !important; }
   header {
     display: flex;
     flex-wrap: wrap;
@@ -43,243 +45,704 @@
     padding: 16px;
   }
   h1 { margin: 0; font-size: 1.4rem; }
-  .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
-  button {
+  .acoes, .filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .filtros { padding: 0 16px 12px; }
+  button, select, input, textarea {
     font: inherit;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: var(--card);
     color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px 10px;
   }
+  button { cursor: pointer; }
   button:hover { border-color: var(--accent); }
+  button.primario { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.perigo { color: var(--danger); }
+  label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+  .eu { color: var(--muted); font-size: 0.9rem; }
+
   .quadro {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(250px, 1fr);
+    gap: 12px;
     padding: 0 16px 24px;
+    overflow-x: auto;
     align-items: start;
   }
-  .coluna {
-    background: var(--col);
-    border-radius: 10px;
-    padding: 12px;
-    min-height: 160px;
-  }
+  .coluna { background: var(--col); border-radius: 10px; padding: 10px; min-height: 160px; }
   .coluna.sobre { outline: 2px dashed var(--accent); }
-  .coluna h2 {
-    margin: 0 0 10px;
-    font-size: 1rem;
-    display: flex;
-    justify-content: space-between;
-  }
+  .coluna h2 { margin: 0 0 10px; font-size: 0.95rem; display: flex; justify-content: space-between; }
   .contador { color: var(--muted); font-weight: normal; }
   .cartao {
     background: var(--card);
     border: 1px solid var(--border);
+    border-left: 5px solid var(--cor, var(--border));
     border-radius: 8px;
-    padding: 10px;
+    padding: 8px 10px;
     margin-bottom: 8px;
-    cursor: grab;
+    cursor: pointer;
     word-break: break-word;
   }
   .cartao.arrastando { opacity: 0.4; }
-  .cartao .texto { white-space: pre-wrap; outline: none; }
-  .cartao .texto:focus { box-shadow: 0 0 0 2px var(--accent); border-radius: 4px; }
-  .cartao .botoes {
-    display: flex;
-    justify-content: flex-end;
-    gap: 4px;
-    margin-top: 8px;
+  .cartao .titulo { font-weight: 600; margin-bottom: 4px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px; font-size: 0.78rem; color: var(--muted); align-items: center; }
+  .etiqueta { border-radius: 10px; padding: 1px 7px; color: #fff; background: var(--cor, var(--muted)); }
+  .atrasado { color: var(--danger); font-weight: 600; }
+  .pessoa {
+    display: inline-grid; place-items: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--col); border: 1px solid var(--border); font-size: 0.7rem;
   }
-  .cartao .botoes button { padding: 2px 8px; font-size: 0.85rem; }
-  .cartao .botoes .excluir { color: var(--danger); }
-  form.novo { display: flex; gap: 6px; margin-top: 8px; }
-  form.novo input {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    padding: 6px 8px;
-    border-radius: 6px;
+  .cartao .mover { display: flex; justify-content: flex-end; gap: 4px; margin-top: 6px; }
+  .cartao .mover button { padding: 0 8px; font-size: 0.8rem; }
+  form.novo { display: flex; gap: 6px; margin-top: 4px; }
+  form.novo input { flex: 1; min-width: 0; }
+
+  .tela-login { max-width: 360px; margin: 12vh auto; padding: 0 16px; }
+  .tela-login form { display: flex; flex-direction: column; gap: 10px; }
+  .aviso { color: var(--muted); }
+
+  dialog {
+    width: min(640px, calc(100% - 32px));
+    max-height: calc(100% - 32px);
     border: 1px solid var(--border);
-    background: var(--card);
+    border-radius: 10px;
+    background: var(--bg);
     color: var(--text);
+    padding: 16px;
   }
-  footer { padding: 0 16px 24px; color: var(--muted); font-size: 0.85rem; }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+  dialog h3 { margin: 0 0 12px; }
+  dialog h4 { margin: 16px 0 8px; }
+  .campos { display: grid; gap: 10px; }
+  .campos label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  .campos .linha { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .lista-check { display: grid; gap: 4px; }
+  .lista-check div { display: flex; gap: 6px; align-items: center; }
+  .lista-check input[type=text] { flex: 1; min-width: 0; }
+  .pessoas { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .rodape { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 16px; }
+  .tabela { display: grid; gap: 6px; }
+  .tabela > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tabela .nome { flex: 1; min-width: 140px; }
+  .links a { color: var(--accent); }
 </style>
 </head>
 <body>
-<header>
+
+<section class="tela-login" id="telaLogin" hidden>
   <h1>Quadro Kanban</h1>
-  <div class="acoes">
-    <button id="exportar" title="Baixar um backup do quadro">Exportar</button>
-    <button id="importar" title="Carregar um backup">Importar</button>
-    <input type="file" id="arquivo" accept="application/json" hidden>
+  <form id="formLogin">
+    <p class="aviso">Digite seu e-mail para receber um link de acesso. Não precisa de senha.</p>
+    <input type="email" id="emailLogin" required placeholder="seu@email.com" autocomplete="email">
+    <button class="primario" type="submit">Enviar link</button>
+    <p class="aviso" id="msgLogin"></p>
+  </form>
+</section>
+
+<section class="tela-login" id="telaSemAcesso" hidden>
+  <h1>Sem acesso</h1>
+  <p class="aviso">O e-mail <b id="emailSemAcesso"></b> ainda não foi convidado. Peça ao administrador para adicionar você.</p>
+  <button data-sair>Sair</button>
+</section>
+
+<div id="app" hidden>
+  <header>
+    <h1>Quadro Kanban</h1>
+    <div class="acoes">
+      <span class="eu" id="eu"></span>
+      <button id="abrirAdmin" hidden>Administração</button>
+      <button data-sair>Sair</button>
+    </div>
+  </header>
+  <div class="filtros">
+    <select id="filtroTipo" aria-label="Filtrar por tipo"></select>
+    <select id="filtroCampanha" aria-label="Filtrar por campanha"></select>
+    <select id="filtroPessoa" aria-label="Filtrar por responsável"></select>
+    <label class="check"><input type="checkbox" id="verArquivados"> Arquivados</label>
   </div>
-</header>
+  <main class="quadro" id="quadro"></main>
+</div>
 
-<main class="quadro" id="quadro"></main>
+<dialog id="dlgCartao">
+  <form method="dialog" id="formCartao">
+    <h3 id="dlgTitulo">Cartão</h3>
+    <div class="campos">
+      <label>Título <input id="cTitulo" required></label>
+      <div class="linha">
+        <label>Tipo <select id="cTipo"></select></label>
+        <label>Campanha <select id="cCampanha"></select></label>
+      </div>
+      <div class="linha">
+        <label>Coluna <select id="cColuna"></select></label>
+        <label>Prazo <input type="date" id="cPrazo"></label>
+      </div>
+      <div class="linha">
+        <label>Data de publicação <input type="date" id="cPublicacao"></label>
+        <span></span>
+      </div>
+      <label>Responsáveis <div class="pessoas" id="cPessoas"></div></label>
+      <label>Briefing (objetivo, público, mensagem, rede)
+        <textarea id="cBriefing" rows="4"></textarea>
+      </label>
+      <label>Links — um por linha, ex.: <i>Drive | https://…</i>
+        <textarea id="cLinks" rows="3"></textarea>
+      </label>
+      <div class="links" id="cLinksVer"></div>
+      <label>Checklist</label>
+      <div class="lista-check" id="cChecklist"></div>
+      <div><button type="button" id="cAddEtapa">+ Etapa</button></div>
+    </div>
+    <div class="rodape">
+      <div class="acoes">
+        <button type="button" class="perigo" id="cExcluir" hidden>Excluir</button>
+        <button type="button" id="cArquivar" hidden>Arquivar</button>
+      </div>
+      <div class="acoes">
+        <button value="cancelar" formnovalidate>Cancelar</button>
+        <button class="primario" type="button" id="cSalvar">Salvar</button>
+      </div>
+    </div>
+  </form>
+</dialog>
 
-<footer>
-  Arraste os cartões entre as colunas (ou use ← →). Clique no texto para editar.
-  Os dados ficam salvos neste navegador; use "Exportar" para fazer backup.
-</footer>
+<dialog id="dlgAdmin">
+  <h3>Administração</h3>
+
+  <h4>Membros</h4>
+  <div class="tabela" id="aMembros"></div>
+  <form class="acoes" id="aFormMembro" style="margin-top:8px">
+    <input type="email" id="aEmail" required placeholder="email@exemplo.com">
+    <input id="aNome" placeholder="Nome">
+    <select id="aPapel"><option value="membro">Membro</option><option value="admin">Admin</option></select>
+    <button type="submit">Adicionar</button>
+  </form>
+
+  <h4>Campanhas</h4>
+  <div class="tabela" id="aCampanhas"></div>
+  <form class="acoes" id="aFormCampanha" style="margin-top:8px">
+    <input id="aCampNome" required placeholder="Nome da campanha">
+    <input type="color" id="aCampCor" value="#8250df" aria-label="Cor">
+    <button type="submit">Adicionar</button>
+  </form>
+
+  <h4>Tipos de tarefa</h4>
+  <div class="tabela" id="aTipos"></div>
+  <form class="acoes" id="aFormTipo" style="margin-top:8px">
+    <input id="aTipoNome" required placeholder="Nome do tipo">
+    <input type="color" id="aTipoCor" value="#2f6feb" aria-label="Cor">
+    <input id="aTipoCheck" placeholder="Etapas separadas por vírgula" style="flex:1;min-width:180px">
+    <button type="submit">Adicionar</button>
+  </form>
+
+  <div class="rodape">
+    <button id="aExportar">Exportar backup</button>
+    <form method="dialog"><button>Fechar</button></form>
+  </div>
+</dialog>
 
 <script>
-  const CHAVE = "kanban-dados";
+  const sb = supabase.createClient(
+    "https://onbmvsdbptgamrwptvww.supabase.co",
+    "sb_publishable_dAHH6jacP-214UJyZmAm7g_vViAWYfg"
+  );
+
   const COLUNAS = [
-    { id: "afazer", nome: "A fazer" },
-    { id: "fazendo", nome: "Fazendo" },
-    { id: "feito", nome: "Feito" },
+    { id: "ideias", nome: "Ideias/Pautas" },
+    { id: "roteiro", nome: "Roteiro/Briefing" },
+    { id: "producao", nome: "Em produção" },
+    { id: "revisao", nome: "Revisão" },
+    { id: "aprovado", nome: "Aprovado" },
+    { id: "publicado", nome: "Publicado/Colado" },
   ];
 
-  function carregar() {
-    try {
-      const salvo = JSON.parse(localStorage.getItem(CHAVE));
-      if (Array.isArray(salvo)) return salvo;
-    } catch (e) {}
-    return [
-      { id: novoId(), coluna: "afazer", texto: "Meu primeiro cartão" },
-    ];
+  const $ = id => document.getElementById(id);
+  let eu = null, admin = false;
+  let membros = [], tipos = [], campanhas = [], cartoes = [];
+  let editando = null, checklistEdit = [];
+  let canal = null, recarga = null;
+
+  // ---------- Login ----------
+
+  sb.auth.onAuthStateChange((evento, sessao) => {
+    if (["INITIAL_SESSION", "SIGNED_IN", "SIGNED_OUT"].includes(evento)) {
+      setTimeout(() => entrar(sessao), 0);
+    }
+  });
+
+  $("formLogin").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("msgLogin");
+    msg.textContent = "Enviando…";
+    const { error } = await sb.auth.signInWithOtp({
+      email: $("emailLogin").value.trim().toLowerCase(),
+      options: { emailRedirectTo: location.origin + location.pathname },
+    });
+    msg.textContent = error
+      ? "Não foi possível enviar: " + error.message
+      : "Pronto! Abra o link que chegou no seu e-mail.";
+  });
+
+  document.querySelectorAll("[data-sair]").forEach(b =>
+    b.addEventListener("click", () => sb.auth.signOut()));
+
+  function mostrar(tela) {
+    for (const id of ["telaLogin", "telaSemAcesso", "app"]) $(id).hidden = id !== tela;
   }
 
-  function salvar() {
-    try { localStorage.setItem(CHAVE, JSON.stringify(cartoes)); } catch (e) {}
+  async function entrar(sessao) {
+    if (!sessao) {
+      eu = null;
+      if (canal) { sb.removeChannel(canal); canal = null; }
+      return mostrar("telaLogin");
+    }
+    eu = sessao.user.email.toLowerCase();
+    const { data } = await sb.from("membros").select("*").eq("email", eu).maybeSingle();
+    if (!data) {
+      $("emailSemAcesso").textContent = eu;
+      return mostrar("telaSemAcesso");
+    }
+    admin = data.papel === "admin";
+    $("eu").textContent = (data.nome || eu) + (admin ? " · admin" : "");
+    $("abrirAdmin").hidden = !admin;
+    mostrar("app");
+    await carregarTudo();
+    if (!canal) {
+      canal = sb.channel("cartoes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "cartoes" }, () => {
+          clearTimeout(recarga);
+          recarga = setTimeout(carregarCartoes, 300);
+        })
+        .subscribe();
+    }
   }
 
-  function novoId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // ---------- Dados ----------
+
+  async function carregarTudo() {
+    const [m, t, c] = await Promise.all([
+      sb.from("membros").select("*").order("nome"),
+      sb.from("tipos").select("*").order("nome"),
+      sb.from("campanhas").select("*").order("criado_em"),
+    ]);
+    membros = m.data || [];
+    tipos = t.data || [];
+    campanhas = c.data || [];
+    montarFiltros();
+    await carregarCartoes();
   }
 
-  let cartoes = carregar();
-  const quadro = document.getElementById("quadro");
-
-  function mover(id, colunaId, antesDeId) {
-    const i = cartoes.findIndex(c => c.id === id);
-    if (i < 0) return;
-    const [cartao] = cartoes.splice(i, 1);
-    cartao.coluna = colunaId;
-    const j = antesDeId ? cartoes.findIndex(c => c.id === antesDeId) : -1;
-    if (j >= 0) cartoes.splice(j, 0, cartao);
-    else cartoes.push(cartao);
-    salvar();
+  async function carregarCartoes() {
+    const { data, error } = await sb.from("cartoes").select("*").order("ordem");
+    if (error) return alert("Erro ao carregar: " + error.message);
+    cartoes = data;
     desenhar();
   }
 
+  async function gravar(acao) {
+    const { error } = await acao;
+    if (error) {
+      alert("Não foi possível salvar: " + error.message);
+      await carregarCartoes();
+      return false;
+    }
+    return true;
+  }
+
+  // ---------- Quadro ----------
+
+  const tipoDe = id => tipos.find(t => t.id === id);
+  const campanhaDe = id => campanhas.find(c => c.id === id);
+  const nomeDe = email => (membros.find(m => m.email === email) || {}).nome || email;
+  const iniciais = email => nomeDe(email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
+  const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const dataBR = d => d.split("-").reverse().slice(0, 2).join("/");
+
+  function opcoes(select, itens, vazio) {
+    const atual = select.value;
+    select.innerHTML = "";
+    select.append(new Option(vazio, ""));
+    itens.forEach(([valor, rotulo]) => select.append(new Option(rotulo, valor)));
+    select.value = itens.some(([v]) => v === atual) ? atual : "";
+  }
+
+  function montarFiltros() {
+    opcoes($("filtroTipo"), tipos.map(t => [t.id, t.nome]), "Todos os tipos");
+    opcoes($("filtroCampanha"), campanhas.filter(c => !c.arquivada).map(c => [c.id, c.nome]), "Todas as campanhas");
+    opcoes($("filtroPessoa"), membros.map(m => [m.email, m.nome || m.email]), "Todas as pessoas");
+  }
+  ["filtroTipo", "filtroCampanha", "filtroPessoa", "verArquivados"].forEach(id =>
+    $(id).addEventListener("change", desenhar));
+
+  function visiveis() {
+    const tipo = $("filtroTipo").value, camp = $("filtroCampanha").value, pessoa = $("filtroPessoa").value;
+    const arq = $("verArquivados").checked;
+    return cartoes.filter(c =>
+      c.arquivado === arq &&
+      (!tipo || c.tipo_id === tipo) &&
+      (!camp || c.campanha_id === camp) &&
+      (!pessoa || c.responsaveis.includes(pessoa)));
+  }
+
   function desenhar() {
+    const quadro = $("quadro");
     quadro.innerHTML = "";
+    const lista = visiveis();
     COLUNAS.forEach((col, indice) => {
-      const doCol = cartoes.filter(c => c.coluna === col.id);
+      const doCol = lista.filter(c => c.coluna === col.id);
       const el = document.createElement("section");
       el.className = "coluna";
-      el.dataset.coluna = col.id;
-      el.innerHTML = `<h2>${col.nome} <span class="contador">${doCol.length}</span></h2>`;
+      el.innerHTML = `<h2><span></span><span class="contador">${doCol.length}</span></h2>`;
+      el.querySelector("h2 span").textContent = col.nome;
 
-      doCol.forEach(c => {
-        const card = document.createElement("div");
-        card.className = "cartao";
-        card.draggable = true;
-        card.dataset.id = c.id;
+      doCol.forEach(c => el.append(desenharCartao(c, indice)));
 
-        const texto = document.createElement("div");
-        texto.className = "texto";
-        texto.contentEditable = "true";
-        texto.textContent = c.texto;
-        texto.addEventListener("blur", () => {
-          const novo = texto.textContent.trim();
-          if (novo && novo !== c.texto) { c.texto = novo; salvar(); }
-          else texto.textContent = c.texto;
+      if (!$("verArquivados").checked) {
+        const form = document.createElement("form");
+        form.className = "novo";
+        form.innerHTML = `<input placeholder="Novo cartão…"><button type="submit">+</button>`;
+        form.addEventListener("submit", async e => {
+          e.preventDefault();
+          const titulo = form.querySelector("input").value.trim();
+          if (!titulo) return;
+          const tipo = $("filtroTipo").value || null;
+          const ok = await gravar(sb.from("cartoes").insert({
+            titulo,
+            coluna: col.id,
+            tipo_id: tipo,
+            campanha_id: $("filtroCampanha").value || null,
+            checklist: tipo ? checklistPadrao(tipo) : [],
+          }));
+          if (ok) await carregarCartoes();
         });
-
-        const botoes = document.createElement("div");
-        botoes.className = "botoes";
-        if (indice > 0) botoes.append(botao("←", "Mover para a esquerda", () => mover(c.id, COLUNAS[indice - 1].id)));
-        if (indice < COLUNAS.length - 1) botoes.append(botao("→", "Mover para a direita", () => mover(c.id, COLUNAS[indice + 1].id)));
-        const excluir = botao("✕", "Excluir", () => {
-          if (confirm("Excluir este cartão?")) {
-            cartoes = cartoes.filter(x => x.id !== c.id);
-            salvar();
-            desenhar();
-          }
-        });
-        excluir.classList.add("excluir");
-        botoes.append(excluir);
-
-        card.append(texto, botoes);
-        card.addEventListener("dragstart", e => {
-          e.dataTransfer.setData("text/plain", c.id);
-          card.classList.add("arrastando");
-        });
-        card.addEventListener("dragend", () => card.classList.remove("arrastando"));
-        el.append(card);
-      });
-
-      const form = document.createElement("form");
-      form.className = "novo";
-      form.innerHTML = `<input placeholder="Novo cartão…" aria-label="Novo cartão em ${col.nome}"><button type="submit">+</button>`;
-      form.addEventListener("submit", e => {
-        e.preventDefault();
-        const input = form.querySelector("input");
-        const valor = input.value.trim();
-        if (!valor) return;
-        cartoes.push({ id: novoId(), coluna: col.id, texto: valor });
-        salvar();
-        desenhar();
-        quadro.querySelector(`[data-coluna="${col.id}"] input`).focus();
-      });
-      el.append(form);
+        el.append(form);
+      }
 
       el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("sobre"); });
       el.addEventListener("dragleave", () => el.classList.remove("sobre"));
       el.addEventListener("drop", e => {
         e.preventDefault();
         el.classList.remove("sobre");
-        const id = e.dataTransfer.getData("text/plain");
         const alvo = e.target.closest(".cartao");
-        mover(id, col.id, alvo && alvo.dataset.id !== id ? alvo.dataset.id : null);
+        mover(e.dataTransfer.getData("text/plain"), col.id, alvo ? alvo.dataset.id : null);
       });
-
       quadro.append(el);
     });
   }
 
-  function botao(rotulo, titulo, acao) {
+  function desenharCartao(c, indice) {
+    const card = document.createElement("div");
+    card.className = "cartao";
+    card.draggable = true;
+    card.dataset.id = c.id;
+    const tipo = tipoDe(c.tipo_id), camp = campanhaDe(c.campanha_id);
+    if (tipo) card.style.setProperty("--cor", tipo.cor);
+
+    const titulo = document.createElement("div");
+    titulo.className = "titulo";
+    titulo.textContent = c.titulo;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    if (tipo) meta.append(etiqueta(tipo.nome, tipo.cor));
+    if (camp) meta.append(etiqueta(camp.nome, camp.cor));
+    if (c.prazo) {
+      const s = document.createElement("span");
+      s.textContent = "⏰ " + dataBR(c.prazo);
+      if (c.prazo < hoje() && c.coluna !== "publicado") s.className = "atrasado";
+      meta.append(s);
+    }
+    if (c.data_publicacao) meta.append(texto("📅 " + dataBR(c.data_publicacao)));
+    if (c.checklist.length) {
+      meta.append(texto("✔ " + c.checklist.filter(i => i.feito).length + "/" + c.checklist.length));
+    }
+    c.responsaveis.forEach(email => {
+      const p = document.createElement("span");
+      p.className = "pessoa";
+      p.title = nomeDe(email);
+      p.textContent = iniciais(email);
+      meta.append(p);
+    });
+
+    const botoes = document.createElement("div");
+    botoes.className = "mover";
+    if (indice > 0) botoes.append(botao("←", () => mover(c.id, COLUNAS[indice - 1].id)));
+    if (indice < COLUNAS.length - 1) botoes.append(botao("→", () => mover(c.id, COLUNAS[indice + 1].id)));
+
+    card.append(titulo, meta, botoes);
+    card.addEventListener("click", e => { if (!e.target.closest("button")) abrirCartao(c); });
+    card.addEventListener("dragstart", e => {
+      e.dataTransfer.setData("text/plain", c.id);
+      card.classList.add("arrastando");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("arrastando"));
+    return card;
+  }
+
+  function etiqueta(t, cor) {
+    const s = texto(t);
+    s.className = "etiqueta";
+    s.style.setProperty("--cor", cor);
+    return s;
+  }
+  function texto(t) { const s = document.createElement("span"); s.textContent = t; return s; }
+  function botao(rotulo, acao) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = rotulo;
-    b.title = titulo;
     b.addEventListener("click", acao);
     return b;
   }
 
-  document.getElementById("exportar").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(cartoes, null, 2)], { type: "application/json" });
+  async function mover(id, coluna, antesDeId) {
+    const c = cartoes.find(x => x.id === id);
+    if (!c || antesDeId === id) return;
+    const destino = cartoes.filter(x => x.coluna === coluna && x.id !== id);
+    let ordem;
+    const j = antesDeId ? destino.findIndex(x => x.id === antesDeId) : -1;
+    if (j < 0) ordem = destino.length ? destino[destino.length - 1].ordem + 1 : Date.now() / 1000;
+    else if (j === 0) ordem = destino[0].ordem - 1;
+    else ordem = (destino[j - 1].ordem + destino[j].ordem) / 2;
+    c.coluna = coluna;
+    c.ordem = ordem;
+    cartoes.sort((a, b) => a.ordem - b.ordem);
+    desenhar();
+    await gravar(sb.from("cartoes").update({ coluna, ordem }).eq("id", id));
+  }
+
+  // ---------- Editor do cartão ----------
+
+  const checklistPadrao = tipoId => ((tipoDe(tipoId) || {}).checklist || []).map(item => ({ item, feito: false }));
+
+  function abrirCartao(c) {
+    editando = c;
+    $("dlgTitulo").textContent = c.arquivado ? "Cartão arquivado" : "Cartão";
+    $("cTitulo").value = c.titulo;
+    opcoes($("cTipo"), tipos.map(t => [t.id, t.nome]), "Sem tipo");
+    $("cTipo").value = c.tipo_id || "";
+    opcoes($("cCampanha"), campanhas.filter(x => !x.arquivada || x.id === c.campanha_id).map(x => [x.id, x.nome]), "Sem campanha");
+    $("cCampanha").value = c.campanha_id || "";
+    $("cColuna").innerHTML = "";
+    COLUNAS.forEach(col => $("cColuna").append(new Option(col.nome, col.id)));
+    $("cColuna").value = c.coluna;
+    $("cPrazo").value = c.prazo || "";
+    $("cPublicacao").value = c.data_publicacao || "";
+    $("cBriefing").value = c.briefing;
+    $("cLinks").value = c.links.map(l => (l.rotulo && l.rotulo !== l.url ? l.rotulo + " | " : "") + l.url).join("\n");
+    mostrarLinks(c.links);
+
+    const pessoas = $("cPessoas");
+    pessoas.innerHTML = "";
+    membros.forEach(m => {
+      const l = document.createElement("label");
+      l.className = "check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = m.email;
+      cb.checked = c.responsaveis.includes(m.email);
+      l.append(cb, m.nome || m.email);
+      pessoas.append(l);
+    });
+
+    checklistEdit = c.checklist.map(i => ({ ...i }));
+    desenharChecklist();
+    $("cExcluir").hidden = !admin;
+    $("cArquivar").hidden = !admin;
+    $("cArquivar").textContent = c.arquivado ? "Desarquivar" : "Arquivar";
+    $("dlgCartao").showModal();
+  }
+
+  $("cTipo").addEventListener("change", () => {
+    if (!checklistEdit.length) { checklistEdit = checklistPadrao($("cTipo").value); desenharChecklist(); }
+  });
+
+  function desenharChecklist() {
+    const lista = $("cChecklist");
+    lista.innerHTML = "";
+    checklistEdit.forEach((etapa, i) => {
+      const linha = document.createElement("div");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = etapa.feito;
+      cb.addEventListener("change", () => etapa.feito = cb.checked);
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.value = etapa.item;
+      inp.addEventListener("input", () => etapa.item = inp.value);
+      linha.append(cb, inp, botao("✕", () => { checklistEdit.splice(i, 1); desenharChecklist(); }));
+      lista.append(linha);
+    });
+  }
+  $("cAddEtapa").addEventListener("click", () => {
+    checklistEdit.push({ item: "", feito: false });
+    desenharChecklist();
+    $("cChecklist").lastElementChild.querySelector("input[type=text]").focus();
+  });
+
+  function lerLinks() {
+    return $("cLinks").value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+      const partes = l.split("|");
+      const url = partes.pop().trim();
+      return { rotulo: partes.join("|").trim() || url, url };
+    }).filter(l => /^https?:\/\//i.test(l.url));
+  }
+
+  function mostrarLinks(links) {
+    const el = $("cLinksVer");
+    el.innerHTML = "";
+    links.forEach((l, i) => {
+      const a = document.createElement("a");
+      a.href = l.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = l.rotulo;
+      if (i) el.append(" · ");
+      el.append(a);
+    });
+  }
+
+  $("cSalvar").addEventListener("click", async () => {
+    if (!$("cTitulo").reportValidity()) return;
+    const dados = {
+      titulo: $("cTitulo").value.trim(),
+      tipo_id: $("cTipo").value || null,
+      campanha_id: $("cCampanha").value || null,
+      coluna: $("cColuna").value,
+      prazo: $("cPrazo").value || null,
+      data_publicacao: $("cPublicacao").value || null,
+      responsaveis: [...$("cPessoas").querySelectorAll("input:checked")].map(cb => cb.value),
+      briefing: $("cBriefing").value,
+      links: lerLinks(),
+      checklist: checklistEdit.filter(i => i.item.trim()),
+    };
+    if (await gravar(sb.from("cartoes").update(dados).eq("id", editando.id))) {
+      $("dlgCartao").close();
+      await carregarCartoes();
+    }
+  });
+
+  $("cArquivar").addEventListener("click", async () => {
+    if (await gravar(sb.from("cartoes").update({ arquivado: !editando.arquivado }).eq("id", editando.id))) {
+      $("dlgCartao").close();
+      await carregarCartoes();
+    }
+  });
+
+  $("cExcluir").addEventListener("click", async () => {
+    if (!confirm("Excluir este cartão de vez? Para guardar, use Arquivar.")) return;
+    if (await gravar(sb.from("cartoes").delete().eq("id", editando.id))) {
+      $("dlgCartao").close();
+      await carregarCartoes();
+    }
+  });
+
+  // ---------- Administração ----------
+
+  $("abrirAdmin").addEventListener("click", () => { desenharAdmin(); $("dlgAdmin").showModal(); });
+
+  async function adminGravar(acao) {
+    const { error } = await acao;
+    if (error) alert("Erro: " + error.message);
+    await carregarTudo();
+    desenharAdmin();
+  }
+
+  function linhaAdmin(nome, ...controles) {
+    const d = document.createElement("div");
+    const n = texto(nome);
+    n.className = "nome";
+    d.append(n, ...controles);
+    return d;
+  }
+
+  function desenharAdmin() {
+    const am = $("aMembros");
+    am.innerHTML = "";
+    membros.forEach(m => {
+      const papel = document.createElement("select");
+      papel.append(new Option("Membro", "membro"), new Option("Admin", "admin"));
+      papel.value = m.papel;
+      papel.disabled = m.email === eu;
+      papel.addEventListener("change", () =>
+        adminGravar(sb.from("membros").update({ papel: papel.value }).eq("email", m.email)));
+      const remover = botao("Remover", () => {
+        if (confirm("Remover " + (m.nome || m.email) + " da equipe?"))
+          adminGravar(sb.from("membros").delete().eq("email", m.email));
+      });
+      remover.className = "perigo";
+      remover.disabled = m.email === eu;
+      am.append(linhaAdmin((m.nome ? m.nome + " — " : "") + m.email, papel, remover));
+    });
+
+    const ac = $("aCampanhas");
+    ac.innerHTML = "";
+    campanhas.forEach(c => {
+      ac.append(linhaAdmin(c.nome + (c.arquivada ? " (arquivada)" : ""),
+        botao(c.arquivada ? "Reativar" : "Arquivar", () =>
+          adminGravar(sb.from("campanhas").update({ arquivada: !c.arquivada }).eq("id", c.id)))));
+    });
+
+    const at = $("aTipos");
+    at.innerHTML = "";
+    tipos.forEach(t => {
+      const etapas = document.createElement("input");
+      etapas.value = t.checklist.join(", ");
+      etapas.style.flex = "2";
+      etapas.title = "Etapas padrão, separadas por vírgula";
+      etapas.addEventListener("change", () =>
+        adminGravar(sb.from("tipos").update({ checklist: separar(etapas.value) }).eq("id", t.id)));
+      const cor = document.createElement("input");
+      cor.type = "color";
+      cor.value = t.cor;
+      cor.addEventListener("change", () =>
+        adminGravar(sb.from("tipos").update({ cor: cor.value }).eq("id", t.id)));
+      const excluir = botao("✕", () => {
+        if (confirm("Excluir o tipo " + t.nome + "? Os cartões ficam sem tipo."))
+          adminGravar(sb.from("tipos").delete().eq("id", t.id));
+      });
+      excluir.className = "perigo";
+      at.append(linhaAdmin(t.nome, cor, etapas, excluir));
+    });
+  }
+
+  const separar = s => s.split(",").map(x => x.trim()).filter(Boolean);
+
+  $("aFormMembro").addEventListener("submit", e => {
+    e.preventDefault();
+    adminGravar(sb.from("membros").insert({
+      email: $("aEmail").value.trim().toLowerCase(),
+      nome: $("aNome").value.trim() || null,
+      papel: $("aPapel").value,
+    }));
+    e.target.reset();
+  });
+
+  $("aFormCampanha").addEventListener("submit", e => {
+    e.preventDefault();
+    adminGravar(sb.from("campanhas").insert({ nome: $("aCampNome").value.trim(), cor: $("aCampCor").value }));
+    e.target.reset();
+  });
+
+  $("aFormTipo").addEventListener("submit", e => {
+    e.preventDefault();
+    adminGravar(sb.from("tipos").insert({
+      nome: $("aTipoNome").value.trim(),
+      cor: $("aTipoCor").value,
+      checklist: separar($("aTipoCheck").value),
+    }));
+    e.target.reset();
+  });
+
+  $("aExportar").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ membros, tipos, campanhas, cartoes }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "kanban-backup.json";
+    a.download = "kanban-backup-" + hoje() + ".json";
     a.click();
     URL.revokeObjectURL(a.href);
   });
-
-  const arquivo = document.getElementById("arquivo");
-  document.getElementById("importar").addEventListener("click", () => arquivo.click());
-  arquivo.addEventListener("change", async () => {
-    const f = arquivo.files[0];
-    if (!f) return;
-    try {
-      const dados = JSON.parse(await f.text());
-      if (!Array.isArray(dados)) throw new Error();
-      cartoes = dados;
-      salvar();
-      desenhar();
-    } catch (e) {
-      alert("Arquivo inválido.");
-    }
-    arquivo.value = "";
-  });
-
-  desenhar();
 </script>
 </body>
 </html>
