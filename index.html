@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quadro de Agitação</title>
+<meta name="theme-color" content="#520000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Antonio:wght@500;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -255,6 +261,40 @@
   .fantasma-arraste { opacity: 0.35; }
   .arrastando-agora { box-shadow: var(--sombra-alta); transform: rotate(2deg); }
 
+  /* ---------- Visões, capas e calendário ---------- */
+  .alternador { display: flex; background: rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 3px; gap: 2px; }
+  .alternador button { border: 0; background: transparent; color: #fff; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  .alternador button.ativo { background: var(--mostarda); color: var(--vinho); }
+  .cartao::before { z-index: 1; }
+  .cartao .capa { display: block; width: calc(100% + 24px); margin: -10px -12px 8px; height: 120px; object-fit: cover; background: var(--papel-2); }
+  .capa-gaveta { display: grid; gap: 8px; }
+  .capa-gaveta img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; }
+  .capa-gaveta .acoes-capa { display: flex; gap: 8px; flex-wrap: wrap; }
+  .calendario { flex: 1; overflow-y: auto; padding: 16px; display: grid; gap: 14px; align-content: start; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav h2 { font-family: var(--titulo); text-transform: uppercase; font-size: 26px; margin-left: 8px; color: var(--vermelho); }
+  .cal-grade { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--linha); border: 1px solid var(--linha); border-radius: 12px; overflow: hidden; }
+  .cal-sem { background: var(--papel-2); text-align: center; padding: 6px 0; }
+  .cal-dia { background: var(--superficie); min-height: 104px; padding: 4px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+  .cal-dia.fora { background: var(--papel-2); opacity: 0.6; }
+  .cal-dia.sel { outline: 2px solid var(--vermelho); outline-offset: -2px; }
+  .cal-dia.hoje .cal-num { background: var(--vermelho); color: #fff; }
+  .cal-num { align-self: flex-start; font-weight: 700; font-size: 12px; min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 11px; padding: 0 4px; }
+  .cal-chip { border: 0; border-left: 3px solid var(--cor); background: var(--papel-2); color: var(--tinta); text-align: left; padding: 2px 5px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-chip.prazo { background: transparent; border: 1px dashed var(--cor); border-left: 3px solid var(--cor); }
+  .cal-mais { font-size: 11px; color: var(--suave); }
+  .cal-agenda h3 { font-family: var(--subtitulo); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 16px; color: var(--vermelho); margin-bottom: 8px; }
+  .linha-agenda { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--superficie); border: 1px solid var(--linha); border-left: 4px solid var(--cor); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+  .linha-agenda .quando { margin-left: auto; font-size: 12px; color: var(--suave); white-space: nowrap; }
+  .cal-sem-data summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+  @media (max-width: 767px) {
+    .cal-dia { min-height: 56px; }
+    .cal-chip { height: 6px; padding: 0; border: 0; background: var(--cor); border-radius: 3px; }
+    .cal-chip.prazo { background: transparent; border: 1.5px solid var(--cor); }
+    .cal-chip .txt { display: none; }
+    .alternador button { padding: 5px 8px; }
+  }
+
   /* ---------- Gaveta do cartão ---------- */
   .fundo { position: fixed; inset: 0; background: rgba(31, 20, 20, 0.45); z-index: 20; animation: aparecer .2s; }
   .gaveta {
@@ -405,7 +445,12 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="search" id="busca" placeholder="Buscar título, briefing ou etiqueta…" aria-label="Buscar">
     </div>
+    <div class="alternador" role="tablist">
+      <button data-visao="quadro" class="ativo">Quadro</button>
+      <button data-visao="calendario">Calendário</button>
+    </div>
     <div class="direita">
+      <button class="btn" id="instalar" hidden>Instalar</button>
       <button class="btn" id="botaoFiltros">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
         Filtros
@@ -426,6 +471,7 @@
   <div class="chips" id="chips" hidden></div>
   <nav class="abas" id="abas"></nav>
   <main class="quadro" id="quadro"></main>
+  <section class="calendario" id="calendario" hidden></section>
 </div>
 
 <!-- ---------- Gaveta do cartão ---------- -->
@@ -445,6 +491,14 @@
   </div>
 
   <div class="gaveta-corpo" data-painel="detalhes">
+    <div class="capa-gaveta">
+      <img id="capaImg" alt="Capa do cartão" hidden>
+      <div class="acoes-capa">
+        <button class="btn" type="button" id="capaEscolher">Adicionar capa</button>
+        <button class="btn fantasma perigo" type="button" id="capaRemover" hidden>Remover capa</button>
+        <input type="file" id="capaArquivo" accept="image/*" hidden>
+      </div>
+    </div>
     <div class="grade3">
       <label><span class="rotulo">Etapa</span><select id="cColuna"></select></label>
       <label><span class="rotulo">Tipo</span><select id="cTipo"></select></label>
@@ -508,6 +562,7 @@
       <input id="aTipoNome" required placeholder="Nome do tipo">
       <input type="color" id="aTipoCor" value="#520000" aria-label="Cor">
       <input id="aTipoCheck" placeholder="Etapas separadas por vírgula">
+      <textarea id="aTipoModelo" rows="3" placeholder="Modelo de briefing (opcional): preenche cartões novos deste tipo"></textarea>
       <button class="btn" type="submit">Adicionar</button>
     </form>
   </div>
@@ -546,6 +601,11 @@
   let membros = [], pessoas = [], tipos = [], campanhas = [], cartoes = [];
   let editando = null, checklistEdit = [];
   let canal = null, recarga = null, arrastando = false, salvarTimer = null;
+  let visao = "quadro";
+  try { if (localStorage.getItem("kanban-visao") === "calendario") visao = "calendario"; } catch (e) {}
+  let mesAtual = new Date(); mesAtual.setDate(1);
+  let diaSel = null;
+  const urlsCapa = {};   // caminho no Storage -> { url, ate }
 
   // ---------- Avisos ----------
 
@@ -689,6 +749,7 @@
     if (error) return aviso("Erro ao carregar: " + error.message, true);
     cartoes = data;
     desenhar();
+    carregarCapas().then(novas => { if (novas && !arrastando) desenhar(); });
     if (editando) {
       const atual = cartoes.find(c => c.id === editando.id);
       if (atual) editando = atual;
@@ -802,6 +863,10 @@
 
   function desenhar() {
     desenharChips();
+    $("quadro").hidden = visao !== "quadro";
+    $("abas").hidden = visao !== "quadro";
+    $("calendario").hidden = visao !== "calendario";
+    if (visao === "calendario") return desenharCalendario();
     const quadro = $("quadro");
     const rolagem = quadro.scrollLeft;
     quadro.innerHTML = "";
@@ -901,6 +966,7 @@
         tipo_id: tipo,
         campanha_id: $("filtroCampanha").value || null,
         responsaveis: $("meus").checked ? [meuNome] : [],
+        briefing: tipo ? ((tipoDe(tipo) || {}).briefing_modelo || "") : "",
         checklist: tipo ? checklistPadrao(tipo) : [],
       }).select().single();
       if (error) return aviso("Não foi possível criar: " + error.message, true);
@@ -971,6 +1037,15 @@
       pe.append(av);
     }
 
+    const capa = c.capa && urlsCapa[c.capa];
+    if (capa) {
+      const img = document.createElement("img");
+      img.className = "capa";
+      img.src = capa.url;
+      img.alt = "";
+      img.loading = "lazy";
+      card.append(img);
+    }
     if (tags.children.length) card.append(tags);
     card.append(titulo);
     if (pe.children.length) card.append(pe);
@@ -1052,6 +1127,7 @@
     $("fundo").hidden = false;
     $("gaveta").hidden = false;
     ajustarTitulo();
+    mostrarCapaGaveta();
     carregarComentarios();
   }
 
@@ -1095,6 +1171,8 @@
 
   $("cTipo").addEventListener("change", () => {
     if (!checklistEdit.length) { checklistEdit = checklistPadrao($("cTipo").value); desenharChecklist(); }
+    const modelo = (tipoDe($("cTipo").value) || {}).briefing_modelo;
+    if (modelo && !$("cBriefing").value.trim()) $("cBriefing").value = modelo;
   });
 
   async function salvar() {
@@ -1193,6 +1271,7 @@
     const copia = {
       ...resto,
       titulo: editando.titulo + " (cópia)",
+      capa: null,
       ordem: editando.ordem + 0.001,
       arquivado: false,
       checklist: editando.checklist.map(i => ({ ...i, feito: false })),
@@ -1218,9 +1297,11 @@
   $("cExcluir").addEventListener("click", async () => {
     if (!confirm("Excluir este cartão de vez? Para guardar, use Arquivar.")) return;
     const id = editando.id;
+    const capaAntiga = editando.capa;
     clearTimeout(salvarTimer);
     salvarTimer = null;
     if (await gravar(sb.from("cartoes").delete().eq("id", id))) {
+      if (capaAntiga) sb.storage.from("capas").remove([capaAntiga]);
       cartoes = cartoes.filter(c => c.id !== id);
       aviso("Cartão excluído");
       fecharGaveta();
@@ -1334,7 +1415,14 @@
         if (confirm("Excluir o tipo " + t.nome + "? Os cartões ficam sem tipo."))
           adminGravar(sb.from("tipos").delete().eq("id", t.id));
       }, "perigo");
-      at.append(linhaAdmin(t.nome, cor, etapas, excluir));
+      const modelo = document.createElement("textarea");
+      modelo.rows = 3;
+      modelo.value = t.briefing_modelo || "";
+      modelo.placeholder = "Modelo de briefing: preenche cartões novos deste tipo";
+      modelo.style.flexBasis = "100%";
+      modelo.addEventListener("change", () =>
+        adminGravar(sb.from("tipos").update({ briefing_modelo: modelo.value }).eq("id", t.id), "Modelo atualizado"));
+      at.append(linhaAdmin(t.nome, cor, etapas, excluir, modelo));
     });
   }
 
@@ -1350,6 +1438,7 @@
       nome: $("aTipoNome").value.trim(),
       cor: $("aTipoCor").value,
       checklist: separar($("aTipoCheck").value),
+      briefing_modelo: $("aTipoModelo").value,
     }), "Tipo criado");
     e.target.reset();
   });
@@ -1361,6 +1450,232 @@
     a.download = "kanban-backup-" + hoje() + ".json";
     a.click();
     URL.revokeObjectURL(a.href);
+  });
+
+  // ---------- Visões: quadro e calendário ----------
+
+  function marcarVisao() {
+    document.querySelectorAll("[data-visao]").forEach(b => b.classList.toggle("ativo", b.dataset.visao === visao));
+  }
+  document.querySelectorAll("[data-visao]").forEach(b => b.addEventListener("click", () => {
+    visao = b.dataset.visao;
+    try { localStorage.setItem("kanban-visao", visao); } catch (e) {}
+    marcarVisao();
+    desenhar();
+  }));
+  marcarVisao();
+
+  const isoLocal = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+  function chipCal(c, tipo) {
+    const t = tipoDe(c.tipo_id);
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "cal-chip" + (tipo === "prazo" ? " prazo" : "");
+    el.style.setProperty("--cor", t ? t.cor : "#8a7f72");
+    el.title = (tipo === "prazo" ? "Prazo: " : "Publicação: ") + c.titulo;
+    const txt = texto((tipo === "prazo" ? "⏰ " : "") + c.titulo);
+    txt.className = "txt";
+    el.append(txt);
+    el.addEventListener("click", e => { e.stopPropagation(); abrirCartao(c.id); });
+    return el;
+  }
+
+  function linhaAgenda(c, tipo) {
+    const t = tipoDe(c.tipo_id);
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "linha-agenda";
+    el.style.setProperty("--cor", t ? t.cor : "#8a7f72");
+    const nome = document.createElement("b");
+    nome.textContent = c.titulo;
+    const quando = texto({ pub: "Publicação", prazo: "Prazo", sem: "Sem data" }[tipo] + " · " + colunaDe(c.coluna).nome);
+    quando.className = "quando";
+    el.append(nome, quando);
+    el.addEventListener("click", () => abrirCartao(c.id));
+    return el;
+  }
+
+  function desenharCalendario() {
+    const cal = $("calendario");
+    const rolagem = cal.scrollTop;
+    cal.innerHTML = "";
+    const lista = visiveis();
+    const hojeIso = hoje();
+    if (!diaSel) diaSel = hojeIso;
+
+    const nav = document.createElement("div");
+    nav.className = "cal-nav";
+    const titulo = document.createElement("h2");
+    titulo.textContent = mesAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    nav.append(
+      botao("‹", () => { mesAtual.setMonth(mesAtual.getMonth() - 1); desenharCalendario(); }),
+      botao("Hoje", () => { mesAtual = new Date(); mesAtual.setDate(1); diaSel = hojeIso; desenharCalendario(); }),
+      botao("›", () => { mesAtual.setMonth(mesAtual.getMonth() + 1); desenharCalendario(); }),
+      titulo);
+
+    const itensDoDia = d => [
+      ...lista.filter(c => c.data_publicacao === d).map(c => ({ c, tipo: "pub" })),
+      ...lista.filter(c => c.prazo === d && c.coluna !== "publicado").map(c => ({ c, tipo: "prazo" })),
+    ];
+
+    const grade = document.createElement("div");
+    grade.className = "cal-grade";
+    ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].forEach(n => {
+      const s = texto(n);
+      s.className = "cal-sem rotulo";
+      grade.append(s);
+    });
+    const primeiro = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
+    for (let i = 0; i < 42; i++) {
+      const dia = new Date(primeiro.getFullYear(), primeiro.getMonth(), 1 - primeiro.getDay() + i);
+      const d = isoLocal(dia);
+      const cel = document.createElement("div");
+      cel.className = "cal-dia" + (dia.getMonth() !== mesAtual.getMonth() ? " fora" : "")
+        + (d === hojeIso ? " hoje" : "") + (d === diaSel ? " sel" : "");
+      const num = texto(dia.getDate());
+      num.className = "cal-num";
+      cel.append(num);
+      const itens = itensDoDia(d);
+      itens.slice(0, 3).forEach(({ c, tipo }) => cel.append(chipCal(c, tipo)));
+      if (itens.length > 3) { const m = texto("+" + (itens.length - 3)); m.className = "cal-mais"; cel.append(m); }
+      cel.addEventListener("click", () => { diaSel = d; desenharCalendario(); });
+      grade.append(cel);
+    }
+
+    const agenda = document.createElement("div");
+    agenda.className = "cal-agenda";
+    const h = document.createElement("h3");
+    h.textContent = new Date(diaSel + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+    agenda.append(h);
+    const doDia = itensDoDia(diaSel);
+    if (!doDia.length) { const v = texto("Nada marcado para este dia."); v.className = "aviso"; agenda.append(v); }
+    doDia.forEach(({ c, tipo }) => agenda.append(linhaAgenda(c, tipo)));
+
+    cal.append(nav, grade, agenda);
+
+    const sem = lista.filter(c => !c.data_publicacao && c.coluna !== "publicado");
+    if (sem.length) {
+      const det = document.createElement("details");
+      det.className = "cal-sem-data";
+      const resumo = document.createElement("summary");
+      resumo.textContent = "Sem data de publicação (" + sem.length + ")";
+      det.append(resumo);
+      sem.forEach(c => det.append(linhaAgenda(c, "sem")));
+      cal.append(det);
+    }
+    cal.scrollTop = rolagem;
+  }
+
+  // ---------- Capas (Storage privado "capas", links temporários) ----------
+
+  async function carregarCapas() {
+    const agora = Date.now();
+    const faltam = [...new Set(cartoes.map(c => c.capa).filter(Boolean))]
+      .filter(p => !urlsCapa[p] || urlsCapa[p].ate < agora + 600000);
+    if (!faltam.length) return false;
+    const { data, error } = await sb.storage.from("capas").createSignedUrls(faltam, 3600);
+    if (error || !data) return false;
+    data.forEach(r => { if (r.signedUrl) urlsCapa[r.path] = { url: r.signedUrl, ate: agora + 3500000 }; });
+    return true;
+  }
+  setInterval(() => carregarCapas().then(novas => { if (novas && !arrastando) desenhar(); }), 300000);
+
+  async function mostrarCapaGaveta() {
+    if (!editando) return;
+    const id = editando.id, c = editando;
+    if (c.capa) await carregarCapas();
+    if (!editando || editando.id !== id) return;
+    const u = c.capa && urlsCapa[c.capa];
+    $("capaImg").hidden = !u;
+    if (u) $("capaImg").src = u.url;
+    $("capaEscolher").textContent = c.capa ? "Trocar capa" : "Adicionar capa";
+    $("capaRemover").hidden = !c.capa;
+  }
+
+  // Reduz a imagem antes de enviar (máx. 1280 px, JPEG): poupa o espaço grátis do Storage.
+  function reduzirImagem(arquivo, max = 1280) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(arquivo);
+      img.onload = () => {
+        const f = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * f);
+        cv.height = Math.round(img.height * f);
+        const ctx = cv.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        cv.toBlob(b => b ? resolve(b) : reject(new Error("imagem inválida")), "image/jpeg", 0.82);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("não foi possível ler a imagem")); };
+      img.src = url;
+    });
+  }
+
+  function definirCapa(id, caminho) {
+    const alvo = cartoes.find(x => x.id === id);
+    if (alvo) alvo.capa = caminho;
+    if (editando && editando.id === id) editando.capa = caminho;
+  }
+
+  $("capaEscolher").addEventListener("click", () => $("capaArquivo").click());
+  $("capaArquivo").addEventListener("change", async () => {
+    const arquivo = $("capaArquivo").files[0];
+    $("capaArquivo").value = "";
+    if (!arquivo || !editando) return;
+    const id = editando.id, antiga = editando.capa;
+    $("capaEscolher").disabled = true;
+    try {
+      const blob = await reduzirImagem(arquivo);
+      const caminho = id + "/" + Date.now() + ".jpg";
+      const { error } = await sb.storage.from("capas").upload(caminho, blob, { contentType: "image/jpeg" });
+      if (error) throw error;
+      if (!(await gravar(sb.from("cartoes").update({ capa: caminho }).eq("id", id)))) {
+        sb.storage.from("capas").remove([caminho]);
+        return;
+      }
+      definirCapa(id, caminho);
+      if (antiga) sb.storage.from("capas").remove([antiga]);
+      await carregarCapas();
+      mostrarCapaGaveta();
+      desenhar();
+      aviso("Capa atualizada");
+    } catch (e) {
+      aviso("Não foi possível enviar a capa: " + (e.message || e), true);
+    } finally {
+      $("capaEscolher").disabled = false;
+    }
+  });
+
+  $("capaRemover").addEventListener("click", async () => {
+    if (!editando || !editando.capa) return;
+    const id = editando.id, antiga = editando.capa;
+    if (!(await gravar(sb.from("cartoes").update({ capa: null }).eq("id", id)))) return;
+    definirCapa(id, null);
+    sb.storage.from("capas").remove([antiga]);
+    mostrarCapaGaveta();
+    desenhar();
+    aviso("Capa removida");
+  });
+
+  // ---------- Instalar no celular ----------
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  let pedidoInstalar = null;
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    pedidoInstalar = e;
+    $("instalar").hidden = false;
+  });
+  $("instalar").addEventListener("click", async () => {
+    if (!pedidoInstalar) return;
+    pedidoInstalar.prompt();
+    await pedidoInstalar.userChoice;
+    pedidoInstalar = null;
+    $("instalar").hidden = true;
   });
 </script>
 </body>
